@@ -1,0 +1,673 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Kanban Flow</title>
+<link href="https://fonts.googleapis.com/css2?family=Syne:wght@400;600;700;800&family=DM+Sans:wght@300;400;500&display=swap" rel="stylesheet">
+<style>
+  *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+  :root {
+    --blur: 18px;
+    --col-bg: rgba(255,255,255,0.07);
+    --col-border: rgba(255,255,255,0.15);
+    --card-bg: rgba(255,255,255,0.1);
+    --card-border: rgba(255,255,255,0.2);
+    --card-hover: rgba(255,255,255,0.16);
+    --text-primary: #f0f4ff;
+    --text-secondary: rgba(240,244,255,0.6);
+    --accent-todo: #818cf8;
+    --accent-progress: #34d399;
+    --accent-review: #f59e0b;
+    --accent-done: #a78bfa;
+  }
+
+  body {
+    min-height: 100vh;
+    font-family: 'DM Sans', sans-serif;
+    background: #0a0a1a;
+    overflow-x: auto;
+    position: relative;
+  }
+
+  /* Animated gradient background */
+  body::before {
+    content: '';
+    position: fixed; inset: 0;
+    background:
+      radial-gradient(ellipse 80% 60% at 20% 10%, rgba(99,102,241,0.35) 0%, transparent 60%),
+      radial-gradient(ellipse 70% 50% at 80% 80%, rgba(168,85,247,0.3) 0%, transparent 60%),
+      radial-gradient(ellipse 60% 40% at 60% 30%, rgba(52,211,153,0.15) 0%, transparent 50%),
+      radial-gradient(ellipse 80% 60% at 10% 90%, rgba(99,102,241,0.2) 0%, transparent 60%);
+    z-index: 0;
+    animation: bg-shift 12s ease-in-out infinite alternate;
+  }
+
+  @keyframes bg-shift {
+    0%   { opacity: 1; filter: hue-rotate(0deg); }
+    100% { opacity: 0.8; filter: hue-rotate(30deg); }
+  }
+
+  /* Floating orbs */
+  .orb {
+    position: fixed;
+    border-radius: 50%;
+    filter: blur(80px);
+    animation: float 8s ease-in-out infinite;
+    pointer-events: none;
+    z-index: 0;
+  }
+  .orb1 { width: 400px; height: 400px; background: rgba(99,102,241,0.2); top: -100px; left: -100px; animation-delay: 0s; }
+  .orb2 { width: 300px; height: 300px; background: rgba(168,85,247,0.2); bottom: -50px; right: -50px; animation-delay: -3s; }
+  .orb3 { width: 250px; height: 250px; background: rgba(52,211,153,0.15); top: 40%; left: 50%; animation-delay: -6s; }
+
+  @keyframes float {
+    0%, 100% { transform: translate(0,0) scale(1); }
+    33% { transform: translate(30px,-30px) scale(1.05); }
+    66% { transform: translate(-20px,20px) scale(0.95); }
+  }
+
+  /* Header */
+  header {
+    position: relative; z-index: 10;
+    padding: 2rem 2.5rem 1.2rem;
+    display: flex; align-items: center; justify-content: space-between;
+  }
+
+  .logo {
+    font-family: 'Syne', sans-serif;
+    font-size: 1.8rem;
+    font-weight: 800;
+    background: linear-gradient(135deg, #818cf8, #34d399, #a78bfa);
+    -webkit-background-clip: text;
+    -webkit-text-fill-color: transparent;
+    letter-spacing: -0.5px;
+  }
+
+  .header-right {
+    display: flex; gap: 1rem; align-items: center;
+  }
+
+  .btn-add-task {
+    font-family: 'Syne', sans-serif;
+    font-weight: 600;
+    font-size: 0.85rem;
+    padding: 0.6rem 1.4rem;
+    border: none; cursor: pointer;
+    border-radius: 50px;
+    background: linear-gradient(135deg, #818cf8, #a78bfa);
+    color: white;
+    letter-spacing: 0.5px;
+    box-shadow: 0 4px 20px rgba(129,140,248,0.4);
+    transition: all 0.25s;
+  }
+  .btn-add-task:hover { transform: translateY(-2px); box-shadow: 0 8px 30px rgba(129,140,248,0.5); }
+
+  /* Board */
+  .board-wrapper {
+    position: relative; z-index: 5;
+    padding: 0.5rem 2.5rem 2.5rem;
+    display: flex; gap: 1.4rem;
+    min-height: calc(100vh - 120px);
+    align-items: flex-start;
+  }
+
+  /* Column */
+  .column {
+    flex: 0 0 300px;
+    background: var(--col-bg);
+    border: 1px solid var(--col-border);
+    border-radius: 20px;
+    backdrop-filter: blur(var(--blur));
+    -webkit-backdrop-filter: blur(var(--blur));
+    padding: 1.2rem;
+    min-height: 400px;
+    transition: box-shadow 0.2s;
+  }
+
+  .column.drag-over {
+    box-shadow: 0 0 0 2px rgba(129,140,248,0.6), 0 0 40px rgba(129,140,248,0.2);
+    background: rgba(255,255,255,0.1);
+  }
+
+  .col-header {
+    display: flex; align-items: center; justify-content: space-between;
+    margin-bottom: 1.2rem;
+  }
+
+  .col-title-wrap { display: flex; align-items: center; gap: 0.5rem; }
+
+  .col-dot {
+    width: 10px; height: 10px; border-radius: 50%;
+    box-shadow: 0 0 10px currentColor;
+  }
+
+  .col-title {
+    font-family: 'Syne', sans-serif;
+    font-weight: 700;
+    font-size: 0.9rem;
+    text-transform: uppercase;
+    letter-spacing: 1.5px;
+    color: var(--text-primary);
+  }
+
+  .col-count {
+    font-family: 'Syne', sans-serif;
+    font-size: 0.75rem;
+    font-weight: 700;
+    width: 22px; height: 22px;
+    border-radius: 50%;
+    display: flex; align-items: center; justify-content: center;
+    background: rgba(255,255,255,0.12);
+    color: var(--text-secondary);
+  }
+
+  .cards-container {
+    display: flex; flex-direction: column; gap: 0.8rem;
+    min-height: 40px;
+  }
+
+  /* Card */
+  .card {
+    background: var(--card-bg);
+    border: 1px solid var(--card-border);
+    border-radius: 14px;
+    backdrop-filter: blur(10px);
+    -webkit-backdrop-filter: blur(10px);
+    padding: 1rem 1rem 0.85rem;
+    cursor: grab;
+    transition: all 0.2s cubic-bezier(0.4,0,0.2,1);
+    animation: card-in 0.3s ease both;
+    position: relative;
+    overflow: hidden;
+  }
+
+  @keyframes card-in {
+    from { opacity: 0; transform: translateY(12px) scale(0.97); }
+    to   { opacity: 1; transform: translateY(0) scale(1); }
+  }
+
+  .card::before {
+    content: '';
+    position: absolute; top: 0; left: 0; right: 0;
+    height: 2px;
+    border-radius: 14px 14px 0 0;
+    background: var(--accent-color, #818cf8);
+    opacity: 0.7;
+    transition: opacity 0.2s;
+  }
+
+  .card:hover {
+    background: var(--card-hover);
+    transform: translateY(-3px);
+    box-shadow: 0 12px 40px rgba(0,0,0,0.3), 0 0 0 1px rgba(255,255,255,0.15);
+  }
+
+  .card:hover::before { opacity: 1; }
+
+  .card.dragging {
+    opacity: 0.4;
+    transform: scale(0.97);
+  }
+
+  .card-tag {
+    display: inline-block;
+    font-size: 0.65rem;
+    font-weight: 600;
+    font-family: 'Syne', sans-serif;
+    letter-spacing: 1px;
+    text-transform: uppercase;
+    padding: 0.2rem 0.55rem;
+    border-radius: 50px;
+    background: rgba(255,255,255,0.1);
+    color: var(--accent-color, #818cf8);
+    border: 1px solid rgba(255,255,255,0.12);
+    margin-bottom: 0.5rem;
+  }
+
+  .card-title {
+    font-family: 'DM Sans', sans-serif;
+    font-size: 0.9rem;
+    font-weight: 500;
+    color: var(--text-primary);
+    line-height: 1.4;
+    margin-bottom: 0.7rem;
+  }
+
+  .card-meta {
+    display: flex; align-items: center; justify-content: space-between;
+    flex-wrap: wrap; gap: 0.4rem;
+  }
+
+  .priority-badge {
+    display: flex; align-items: center; gap: 0.3rem;
+    font-size: 0.68rem;
+    font-weight: 500;
+    color: var(--text-secondary);
+  }
+
+  .priority-dot {
+    width: 6px; height: 6px; border-radius: 50%;
+  }
+
+  .priority-high .priority-dot   { background: #f87171; box-shadow: 0 0 6px #f87171; }
+  .priority-medium .priority-dot { background: #fbbf24; box-shadow: 0 0 6px #fbbf24; }
+  .priority-low .priority-dot    { background: #34d399; box-shadow: 0 0 6px #34d399; }
+
+  .card-date {
+    font-size: 0.65rem;
+    color: var(--text-secondary);
+    display: flex; align-items: center; gap: 0.25rem;
+  }
+
+  .card-date svg, .card-meta svg { opacity: 0.6; }
+
+  .delete-btn {
+    position: absolute; top: 0.6rem; right: 0.6rem;
+    background: rgba(248,113,113,0.15);
+    border: none; cursor: pointer;
+    width: 22px; height: 22px; border-radius: 50%;
+    display: flex; align-items: center; justify-content: center;
+    opacity: 0; transition: opacity 0.2s;
+    color: #f87171;
+  }
+
+  .card:hover .delete-btn { opacity: 1; }
+  .delete-btn:hover { background: rgba(248,113,113,0.3); }
+
+  /* Drop placeholder */
+  .drop-placeholder {
+    height: 80px;
+    border: 2px dashed rgba(129,140,248,0.4);
+    border-radius: 12px;
+    background: rgba(129,140,248,0.05);
+    display: none;
+  }
+  .drop-placeholder.visible { display: block; }
+
+  /* Modal */
+  .modal-overlay {
+    position: fixed; inset: 0; z-index: 100;
+    background: rgba(0,0,0,0.5);
+    backdrop-filter: blur(8px);
+    display: flex; align-items: center; justify-content: center;
+    opacity: 0; pointer-events: none;
+    transition: opacity 0.25s;
+  }
+  .modal-overlay.open { opacity: 1; pointer-events: all; }
+
+  .modal {
+    background: rgba(255,255,255,0.08);
+    border: 1px solid rgba(255,255,255,0.18);
+    backdrop-filter: blur(30px);
+    -webkit-backdrop-filter: blur(30px);
+    border-radius: 24px;
+    padding: 2rem;
+    width: 420px;
+    max-width: 95vw;
+    transform: scale(0.9) translateY(20px);
+    transition: transform 0.3s cubic-bezier(0.4,0,0.2,1);
+    box-shadow: 0 30px 80px rgba(0,0,0,0.5);
+  }
+  .modal-overlay.open .modal { transform: scale(1) translateY(0); }
+
+  .modal h2 {
+    font-family: 'Syne', sans-serif;
+    font-size: 1.3rem;
+    font-weight: 700;
+    color: var(--text-primary);
+    margin-bottom: 1.5rem;
+  }
+
+  .form-group { margin-bottom: 1rem; }
+
+  .form-group label {
+    display: block;
+    font-size: 0.75rem;
+    font-weight: 600;
+    font-family: 'Syne', sans-serif;
+    text-transform: uppercase;
+    letter-spacing: 1px;
+    color: var(--text-secondary);
+    margin-bottom: 0.4rem;
+  }
+
+  .form-group input,
+  .form-group select,
+  .form-group textarea {
+    width: 100%;
+    padding: 0.65rem 0.9rem;
+    background: rgba(255,255,255,0.08);
+    border: 1px solid rgba(255,255,255,0.15);
+    border-radius: 10px;
+    color: var(--text-primary);
+    font-family: 'DM Sans', sans-serif;
+    font-size: 0.9rem;
+    outline: none;
+    transition: border-color 0.2s, box-shadow 0.2s;
+    resize: none;
+  }
+
+  .form-group input:focus,
+  .form-group select:focus,
+  .form-group textarea:focus {
+    border-color: rgba(129,140,248,0.5);
+    box-shadow: 0 0 0 3px rgba(129,140,248,0.15);
+  }
+
+  .form-group select option { background: #1e1b4b; }
+
+  .modal-actions {
+    display: flex; gap: 0.8rem; justify-content: flex-end; margin-top: 1.5rem;
+  }
+
+  .btn-cancel {
+    padding: 0.6rem 1.2rem;
+    border-radius: 50px;
+    border: 1px solid rgba(255,255,255,0.15);
+    background: transparent;
+    color: var(--text-secondary);
+    font-family: 'Syne', sans-serif;
+    font-weight: 600;
+    font-size: 0.85rem;
+    cursor: pointer;
+    transition: all 0.2s;
+  }
+  .btn-cancel:hover { background: rgba(255,255,255,0.08); color: var(--text-primary); }
+
+  .btn-create {
+    padding: 0.6rem 1.4rem;
+    border-radius: 50px;
+    border: none;
+    background: linear-gradient(135deg, #818cf8, #a78bfa);
+    color: white;
+    font-family: 'Syne', sans-serif;
+    font-weight: 700;
+    font-size: 0.85rem;
+    cursor: pointer;
+    transition: all 0.2s;
+    box-shadow: 0 4px 15px rgba(129,140,248,0.4);
+  }
+  .btn-create:hover { transform: translateY(-2px); box-shadow: 0 8px 25px rgba(129,140,248,0.5); }
+
+  /* Scrollbar */
+  ::-webkit-scrollbar { width: 6px; height: 6px; }
+  ::-webkit-scrollbar-track { background: transparent; }
+  ::-webkit-scrollbar-thumb { background: rgba(255,255,255,0.15); border-radius: 10px; }
+</style>
+</head>
+<body>
+
+<div class="orb orb1"></div>
+<div class="orb orb2"></div>
+<div class="orb orb3"></div>
+
+<header>
+  <div class="logo">⬡ KanbanFlow</div>
+  <div class="header-right">
+    <button class="btn-add-task" onclick="openModal()">+ New Task</button>
+  </div>
+</header>
+
+<div class="board-wrapper" id="board">
+  <!-- Columns generated by JS -->
+</div>
+
+<!-- Modal -->
+<div class="modal-overlay" id="modalOverlay">
+  <div class="modal">
+    <h2>✦ Create Custom Task</h2>
+    <div class="form-group">
+      <label>Task Title</label>
+      <input type="text" id="taskTitle" placeholder="What needs to be done?" />
+    </div>
+    <div class="form-group">
+      <label>Category</label>
+      <input type="text" id="taskTag" placeholder="e.g. Design, Dev, Marketing" />
+    </div>
+    <div class="form-group">
+      <label>Priority</label>
+      <select id="taskPriority">
+        <option value="high">🔴 High</option>
+        <option value="medium" selected>🟡 Medium</option>
+        <option value="low">🟢 Low</option>
+      </select>
+    </div>
+    <div class="form-group">
+      <label>Due Date</label>
+      <input type="date" id="taskDate" />
+    </div>
+    <div class="form-group">
+      <label>Column</label>
+      <select id="taskColumn">
+        <option value="todo">To Do</option>
+        <option value="inprogress">In Progress</option>
+        <option value="review">Review</option>
+        <option value="done">Done</option>
+      </select>
+    </div>
+    <div class="modal-actions">
+      <button class="btn-cancel" onclick="closeModal()">Cancel</button>
+      <button class="btn-create" onclick="createTask()">Create Task</button>
+    </div>
+  </div>
+</div>
+
+<script>
+const COLUMNS = [
+  { id: 'todo',       title: 'To Do',      dot: '#818cf8', accent: '#818cf8' },
+  { id: 'inprogress', title: 'In Progress', dot: '#34d399', accent: '#34d399' },
+  { id: 'review',     title: 'Review',      dot: '#f59e0b', accent: '#f59e0b' },
+  { id: 'done',       title: 'Done',        dot: '#a78bfa', accent: '#a78bfa' },
+];
+
+let tasks = {
+  todo: [
+    { id: 't1', title: 'Redesign landing page hero section', tag: 'Design', priority: 'high', date: '2026-02-25' },
+    { id: 't2', title: 'Set up CI/CD pipeline for staging', tag: 'DevOps', priority: 'medium', date: '2026-03-01' },
+    { id: 't3', title: 'Write API documentation for v2 endpoints', tag: 'Docs', priority: 'low', date: '2026-03-10' },
+    { id: 't4', title: 'Conduct user interviews for new feature', tag: 'Research', priority: 'high', date: '2026-02-28' },
+  ],
+  inprogress: [
+    { id: 't5', title: 'Build dashboard analytics charts', tag: 'Frontend', priority: 'high', date: '2026-02-22' },
+    { id: 't6', title: 'Migrate database to PostgreSQL', tag: 'Backend', priority: 'medium', date: '2026-02-26' },
+    { id: 't7', title: 'Implement OAuth 2.0 login flow', tag: 'Auth', priority: 'high', date: '2026-02-20' },
+  ],
+  review: [
+    { id: 't8', title: 'Mobile responsive nav component', tag: 'Frontend', priority: 'medium', date: '2026-02-19' },
+    { id: 't9', title: 'Payment gateway integration tests', tag: 'QA', priority: 'high', date: '2026-02-18' },
+  ],
+  done: [
+    { id: 't10', title: 'Setup project repository structure', tag: 'Dev', priority: 'low', date: '2026-02-10' },
+    { id: 't11', title: 'Create brand style guide', tag: 'Design', priority: 'medium', date: '2026-02-12' },
+    { id: 't12', title: 'Configure ESLint & Prettier', tag: 'Dev', priority: 'low', date: '2026-02-08' },
+  ],
+};
+
+let dragSrc = null;
+let dragTaskId = null;
+let dragOriginCol = null;
+
+function formatDate(d) {
+  if (!d) return '';
+  const parts = d.split('-');
+  const months = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
+  return `${months[+parts[1]-1]} ${+parts[2]}`;
+}
+
+function renderCard(task, colAccent) {
+  const card = document.createElement('div');
+  card.className = 'card';
+  card.draggable = true;
+  card.dataset.id = task.id;
+  card.style.setProperty('--accent-color', colAccent);
+
+  card.innerHTML = `
+    <button class="delete-btn" onclick="deleteTask('${task.id}')">
+      <svg width="10" height="10" viewBox="0 0 12 12" fill="currentColor">
+        <path d="M1 1l10 10M11 1L1 11" stroke="currentColor" stroke-width="2" stroke-linecap="round"/>
+      </svg>
+    </button>
+    <div class="card-tag">${task.tag}</div>
+    <div class="card-title">${task.title}</div>
+    <div class="card-meta">
+      <div class="priority-badge priority-${task.priority}">
+        <div class="priority-dot"></div>
+        ${task.priority.charAt(0).toUpperCase()+task.priority.slice(1)}
+      </div>
+      ${task.date ? `<div class="card-date">
+        <svg width="10" height="10" viewBox="0 0 16 16" fill="currentColor">
+          <path d="M5 2v2H3a1 1 0 00-1 1v9a1 1 0 001 1h10a1 1 0 001-1V5a1 1 0 00-1-1h-2V2H9v2H7V2H5zm-2 5h10v7H3V7z"/>
+        </svg>
+        ${formatDate(task.date)}
+      </div>` : ''}
+    </div>
+  `;
+
+  card.addEventListener('dragstart', e => {
+    dragTaskId = task.id;
+    dragOriginCol = findTaskCol(task.id);
+    dragSrc = card;
+    setTimeout(() => card.classList.add('dragging'), 0);
+    e.dataTransfer.effectAllowed = 'move';
+  });
+
+  card.addEventListener('dragend', () => {
+    card.classList.remove('dragging');
+    document.querySelectorAll('.drop-placeholder').forEach(p => p.classList.remove('visible'));
+  });
+
+  return card;
+}
+
+function findTaskCol(id) {
+  for (const col of Object.keys(tasks)) {
+    if (tasks[col].find(t => t.id === id)) return col;
+  }
+  return null;
+}
+
+function renderBoard() {
+  const board = document.getElementById('board');
+  board.innerHTML = '';
+
+  COLUMNS.forEach(col => {
+    const colEl = document.createElement('div');
+    colEl.className = 'column';
+    colEl.dataset.col = col.id;
+
+    const count = tasks[col.id].length;
+
+    colEl.innerHTML = `
+      <div class="col-header">
+        <div class="col-title-wrap">
+          <div class="col-dot" style="background:${col.dot};color:${col.dot}"></div>
+          <div class="col-title">${col.title}</div>
+        </div>
+        <div class="col-count">${count}</div>
+      </div>
+      <div class="cards-container" id="container-${col.id}">
+        <div class="drop-placeholder" id="ph-${col.id}"></div>
+      </div>
+    `;
+
+    board.appendChild(colEl);
+
+    const container = colEl.querySelector('.cards-container');
+
+    tasks[col.id].forEach(task => {
+      const card = renderCard(task, col.accent);
+      container.appendChild(card);
+    });
+
+    // Drag events on column
+    colEl.addEventListener('dragover', e => {
+      e.preventDefault();
+      e.dataTransfer.dropEffect = 'move';
+      colEl.classList.add('drag-over');
+      document.getElementById('ph-'+col.id).classList.add('visible');
+    });
+
+    colEl.addEventListener('dragleave', e => {
+      if (!colEl.contains(e.relatedTarget)) {
+        colEl.classList.remove('drag-over');
+        document.getElementById('ph-'+col.id).classList.remove('visible');
+      }
+    });
+
+    colEl.addEventListener('drop', e => {
+      e.preventDefault();
+      colEl.classList.remove('drag-over');
+      document.getElementById('ph-'+col.id).classList.remove('visible');
+
+      if (!dragTaskId || dragOriginCol === col.id) return;
+
+      // Move task
+      const task = tasks[dragOriginCol].find(t => t.id === dragTaskId);
+      tasks[dragOriginCol] = tasks[dragOriginCol].filter(t => t.id !== dragTaskId);
+      tasks[col.id].unshift(task);
+
+      renderBoard();
+    });
+  });
+}
+
+function deleteTask(id) {
+  const col = findTaskCol(id);
+  if (col) {
+    tasks[col] = tasks[col].filter(t => t.id !== id);
+    renderBoard();
+  }
+}
+
+let taskCounter = 100;
+
+function openModal() {
+  // Set default date to today
+  const today = new Date().toISOString().split('T')[0];
+  document.getElementById('taskDate').value = today;
+  document.getElementById('taskTitle').value = '';
+  document.getElementById('taskTag').value = '';
+  document.getElementById('taskPriority').value = 'medium';
+  document.getElementById('modalOverlay').classList.add('open');
+}
+
+function closeModal() {
+  document.getElementById('modalOverlay').classList.remove('open');
+}
+
+function createTask() {
+  const title = document.getElementById('taskTitle').value.trim();
+  if (!title) { document.getElementById('taskTitle').focus(); return; }
+
+  const tag = document.getElementById('taskTag').value.trim() || 'Custom';
+  const priority = document.getElementById('taskPriority').value;
+  const date = document.getElementById('taskDate').value;
+  const col = document.getElementById('taskColumn').value;
+
+  const newTask = {
+    id: 'ct' + (++taskCounter),
+    title, tag, priority, date
+  };
+
+  tasks[col].unshift(newTask);
+  closeModal();
+  renderBoard();
+}
+
+// Close modal on overlay click
+document.getElementById('modalOverlay').addEventListener('click', e => {
+  if (e.target === document.getElementById('modalOverlay')) closeModal();
+});
+
+// Keyboard shortcut
+document.addEventListener('keydown', e => {
+  if (e.key === 'Escape') closeModal();
+  if ((e.metaKey || e.ctrlKey) && e.key === 'k') { e.preventDefault(); openModal(); }
+});
+
+renderBoard();
+</script>
+</body>
+</html>
